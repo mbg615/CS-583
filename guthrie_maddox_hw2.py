@@ -2,7 +2,6 @@ import bisect
 import random
 import sympy as sp
 import numpy as np
-from numpy.polynomial import Polynomial
 from collections import Counter
 
 
@@ -108,24 +107,76 @@ def reservoir_sample(infinite_stream, k: int) -> list:
 
 
 # Q4
+def subtract_lambda_identity_4x4(matrix, λ):
+    return [[matrix[i][j] - (λ if i == j else 0) for j in range(4)] for i in range(4)]
+
+
+def evaluate_characteristic_equation(coeffs, x):
+    return coeffs[0]*x**4 + coeffs[1]*x**3 + coeffs[2]*x**2 + coeffs[3]*x + coeffs[4]
+
+
+def differentiate_characteristic_equation(coeffs, x):
+    return 4*coeffs[0]*x**3 + 3*coeffs[1]*x**2 + 2*coeffs[2]*x + coeffs[3]
+
+
+def solve_quartic(coeffs):
+    roots = []
+    def newton_root(guess):
+        x = guess
+        for _ in range(1000):
+            fx = evaluate_characteristic_equation(coeffs, x)
+            dfx = differentiate_characteristic_equation(coeffs, x)
+            if abs(dfx) < 1e-12:
+                break
+            x_new = x - fx / dfx
+            if abs(x_new - x) < 1e-9:
+                return x_new
+            x = x_new
+        return x
+    for guess in [0, 1, -1, 2, -2, 5, -5, 10, -10]:
+        root = newton_root(guess)
+        if not any(abs(root - r) < 1e-6 for r in roots):
+            roots.append(root)
+        if len(roots) == 4:
+            break
+    return roots
+
+
+def gaussian_solve(A, b):
+    n = len(A)
+    for i in range(n):
+        pivot = A[i][i]
+        if abs(pivot) < 1e-12:
+            for k in range(i+1, n):
+                if abs(A[k][i]) > 1e-12:
+                    A[i], A[k] = A[k], A[i]
+                    b[i], b[k] = b[k], b[i]
+                    pivot = A[i][i]
+                    break
+        if abs(pivot) < 1e-12:
+            continue
+        for j in range(i, n):
+            A[i][j] /= pivot
+        b[i] /= pivot
+        for k in range(i+1, n):
+            factor = A[k][i]
+            for j in range(i, n):
+                A[k][j] -= factor * A[i][j]
+            b[k] -= factor * b[i]
+    x = [0]*n
+    for i in range(n-1, -1, -1):
+        x[i] = b[i] - sum(A[i][j]*x[j] for j in range(i+1, n))
+    return x
+
+
 def calculate_eigenvalues_4x4(matrix: list[list[float]]) -> list[float]:
-    matrix = sp.Matrix(matrix)
-
-    sym_lambda = sp.Symbol('lambda')
-    sym_identity = sp.eye(4)
-
-    char_matrix = matrix - sym_lambda * sym_identity
-    char_poly = char_matrix.det().expand()
-
-    coefficients = [char_poly.coeff(sym_lambda, x) for x in range(4, -1, -1)]
-    float_coefficients = [float(c) for c in coefficients]
-
-    _eigenvalues = Polynomial(float_coefficients[::-1]).roots()
-    _eigenvalues = [complex_val.real for complex_val in _eigenvalues if np.isclose(complex_val.imag, 0)]
-    _eigenvalues = [complex_val.real for complex_val in _eigenvalues]
-    _eigenvalues.sort(reverse=True)
-
-    return [round(val) for val in _eigenvalues]
+    xs = [-3, -1, 0, 1, 6]
+    ys = [calculate_determinant_4x4(subtract_lambda_identity_4x4(matrix, x)) for x in xs]
+    M = [[x**4, x**3, x**2, x, 1] for x in xs]
+    coefficients = gaussian_solve(M, ys)
+    roots = solve_quartic(coefficients)
+    roots = [round(r) for r in sorted(roots, reverse=True)]
+    return roots
 
 
 # Q5
